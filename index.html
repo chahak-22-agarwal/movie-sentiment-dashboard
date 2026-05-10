@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CineScope — Movie Sentiment Analysis</title>
+
+  <!-- Google Fonts: Playfair Display (cinematic headline) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap"
+    rel="stylesheet" />
+
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — cinematic noir / projection-room palette
+   ═══════════════════════════════════════════════════════════ */
+    :root {
+      --ink: #0d0d12;
+      --surface: #14141c;
+      --panel: #1c1c28;
+      --rim: #2a2a3a;
+      --muted: #4a4a62;
+      --text-dim: #8585a8;
+      --text: #e8e8f0;
+      --text-hi: #ffffff;
+
+      --gold: #e8b84b;
+      --gold-dim: #a07e2a;
+      --pos: #3ecf8e;
+      --pos-dim: #1a7a52;
+      --neg: #f86b6b;
+      --neg-dim: #8c2e2e;
+
+      --radius-sm: 6px;
+      --radius: 12px;
+      --radius-lg: 20px;
+
+      --shadow: 0 8px 32px rgba(0, 0, 0, .55);
+      --shadow-sm: 0 2px 12px rgba(0, 0, 0, .4);
+    }
+
+    /* ── Reset ── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--ink);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Film-strip top border ── */
+    body::before {
+      content: '';
+      display: block;
+      height: 6px;
+      background: repeating-linear-gradient(90deg,
+          var(--gold) 0px, var(--gold) 18px,
+          transparent 18px, transparent 26px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    /* ── Grain overlay ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      z-index: 9999;
+      opacity: .35;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+    .wrapper {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 3.5rem 0 2.5rem;
+      text-align: center;
+      animation: fadeDown .6s ease both;
+    }
+
+    .brand {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 5vw, 3.8rem);
+      font-weight: 900;
+      letter-spacing: -.02em;
+      color: var(--text-hi);
+      line-height: 1;
+    }
+
+    .brand span {
+      color: var(--gold);
+    }
+
+    .tagline {
+      margin-top: .6rem;
+      font-size: .95rem;
+      color: var(--text-dim);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-weight: 300;
+    }
+
+    /* ─── Divider ─── */
+    .divider {
+      width: 60px;
+      height: 2px;
+      background: var(--gold);
+      margin: 1.2rem auto 0;
+      border-radius: 2px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   INPUT CARD
+   ═══════════════════════════════════════════════════════════ */
+    .input-card {
+      background: var(--panel);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-lg);
+      padding: 2rem 2rem 2.2rem;
+      margin-bottom: 2.5rem;
+      box-shadow: var(--shadow);
+      animation: fadeUp .5s .1s ease both;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    @media (max-width: 620px) {
+      .input-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      font-size: .78rem;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    input,
+    textarea {
+      background: var(--surface);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: .95rem;
+      padding: .75rem 1rem;
+      transition: border-color .2s, box-shadow .2s;
+      resize: none;
+      outline: none;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--muted);
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232, 184, 75, .12);
+    }
+
+    /* multi-review add row */
+    .review-row {
+      display: flex;
+      gap: .6rem;
+      align-items: flex-start;
+    }
+
+    .review-row textarea {
+      flex: 1;
+    }
+
+    .btn-icon {
+      width: 38px;
+      height: 38px;
+      background: var(--rim);
+      border: 1px solid var(--muted);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      font-size: 1.25rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background .2s, color .2s;
+      margin-top: .45rem;
+    }
+
+    .btn-icon:hover {
+      background: var(--muted);
+      color: var(--text-hi);
+    }
+
+    .extra-reviews {
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      margin-top: .5rem;
+    }
+
+    .extra-review-item {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      font-size: .85rem;
+      color: var(--text-dim);
+      background: var(--surface);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-sm);
+      padding: .5rem .75rem;
+    }
+
+    .extra-review-item span {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .extra-review-item button {
+      background: none;
+      border: none;
+      color: var(--neg);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 .2rem;
+    }
+
+    .btn-analyze {
+      grid-column: 1 / -1;
+      margin-top: .6rem;
+      padding: .9rem 2rem;
+      background: var(--gold);
+      color: var(--ink);
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: .04em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .6rem;
+      transition: background .2s, transform .12s;
+    }
+
+    .btn-analyze:hover {
+      background: #f0c96a;
+    }
+
+    .btn-analyze:active {
+      transform: scale(.98);
+    }
+
+    .btn-analyze:disabled {
+      background: var(--gold-dim);
+      cursor: not-allowed;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   SPINNER
+   ═══════════════════════════════════════════════════════════ */
+    .spinner-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 3rem 0;
+      animation: fadeUp .3s ease both;
+    }
+
+    .spinner-wrap.active {
+      display: flex;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--rim);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spinner-label {
+      color: var(--text-dim);
+      font-size: .9rem;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   ERROR BANNER
+   ═══════════════════════════════════════════════════════════ */
+    .error-banner {
+      display: none;
+      background: rgba(248, 107, 107, .12);
+      border: 1px solid rgba(248, 107, 107, .3);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      color: #f86b6b;
+      font-size: .9rem;
+      margin-bottom: 1.5rem;
+      animation: fadeUp .3s ease both;
+    }
+
+    .error-banner.active {
+      display: block;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   RESULTS SECTION
+   ═══════════════════════════════════════════════════════════ */
+    #results {
+      display: none;
+      animation: fadeUp .45s ease both;
+    }
+
+    #results.active {
+      display: block;
+    }
+
+    /* ── Movie card ── */
+    .movie-card {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 2rem;
+      background: var(--panel);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-lg);
+      padding: 1.8rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+
+    @media (max-width: 600px) {
+      .movie-card {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .poster-wrap {
+      position: relative;
+      align-self: start;
+    }
+
+    .movie-poster {
+      width: 100%;
+      aspect-ratio: 2/3;
+      object-fit: cover;
+      border-radius: var(--radius);
+      display: block;
+      box-shadow: var(--shadow);
+    }
+
+    .poster-placeholder {
+      width: 100%;
+      aspect-ratio: 2/3;
+      border-radius: var(--radius);
+      background: var(--surface);
+      border: 1px solid var(--rim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+    }
+
+    .movie-meta {
+      display: flex;
+      flex-direction: column;
+      gap: .7rem;
+    }
+
+    .movie-title-text {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.4rem, 3vw, 1.9rem);
+      font-weight: 700;
+      color: var(--text-hi);
+      line-height: 1.2;
+    }
+
+    .movie-year {
+      color: var(--text-dim);
+      font-size: .95rem;
+    }
+
+    .imdb-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      background: var(--gold);
+      color: var(--ink);
+      font-size: .8rem;
+      font-weight: 700;
+      padding: .25rem .7rem;
+      border-radius: var(--radius-sm);
+      width: fit-content;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+    }
+
+    .tag {
+      font-size: .75rem;
+      padding: .25rem .7rem;
+      border-radius: 100px;
+      background: var(--rim);
+      color: var(--text-dim);
+      border: 1px solid var(--muted);
+      font-weight: 500;
+    }
+
+    .meta-line {
+      font-size: .88rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+
+    .meta-line strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .movie-plot {
+      font-size: .9rem;
+      color: var(--text-dim);
+      line-height: 1.65;
+      border-left: 2px solid var(--gold-dim);
+      padding-left: .9rem;
+      margin-top: .3rem;
+    }
+
+    /* ── Sentiment headline card ── */
+    .sentiment-headline {
+      background: var(--panel);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-lg);
+      padding: 1.8rem 2rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+
+    .sentiment-label-big {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .sentiment-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .sentiment-text {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.5rem, 3.5vw, 2.4rem);
+      font-weight: 700;
+    }
+
+    .sentiment-sub {
+      font-size: .88rem;
+      color: var(--text-dim);
+      margin-top: .15rem;
+    }
+
+    /* Confidence meter */
+    .confidence-wrap {
+      min-width: 220px;
+      flex: 1;
+      max-width: 340px;
+    }
+
+    .confidence-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: .78rem;
+      color: var(--text-dim);
+      margin-bottom: .45rem;
+    }
+
+    .confidence-label-row strong {
+      color: var(--text);
+    }
+
+    .confidence-bar {
+      height: 10px;
+      background: var(--rim);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      border-radius: 100px;
+      transition: width 1s cubic-bezier(.4, 0, .2, 1);
+      width: 0;
+    }
+
+    /* ── Charts row ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 580px) {
+      .charts-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .chart-card {
+      background: var(--panel);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .chart-label {
+      font-size: .75rem;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 200px;
+    }
+
+    /* ── Review results list ── */
+    .reviews-card {
+      background: var(--panel);
+      border: 1px solid var(--rim);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem 1.8rem;
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .reviews-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.2rem;
+    }
+
+    .section-title {
+      font-size: .78rem;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .review-item {
+      border-top: 1px solid var(--rim);
+      padding: 1rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      animation: fadeUp .3s ease both;
+    }
+
+    .review-item:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .review-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .7rem;
+    }
+
+    .review-num {
+      font-size: .75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .badge {
+      font-size: .72rem;
+      font-weight: 500;
+      padding: .2rem .65rem;
+      border-radius: 100px;
+    }
+
+    .badge-pos {
+      background: rgba(62, 207, 142, .14);
+      color: var(--pos);
+      border: 1px solid rgba(62, 207, 142, .25);
+    }
+
+    .badge-neg {
+      background: rgba(248, 107, 107, .14);
+      color: var(--neg);
+      border: 1px solid rgba(248, 107, 107, .25);
+    }
+
+    .review-text-display {
+      font-size: .9rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .review-mini-bar {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .mini-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--rim);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+
+    .mini-fill {
+      height: 100%;
+      border-radius: 100px;
+    }
+
+    .mini-val {
+      font-size: .73rem;
+      color: var(--text-dim);
+      min-width: 38px;
+      text-align: right;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+    @keyframes fadeDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 2rem 0 3rem;
+      font-size: .8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ═══════════════════════  HEADER  ═══════════════════════ -->
+  <div class="wrapper">
+
+    <header>
+      <div class="brand">Cinema</span></div>
+
+      <div class="divider"></div>
+    </header>
+
+    <!-- ═══════════════════  INPUT CARD  ═══════════════════ -->
+    <div class="input-card">
+      <div class="input-grid">
+
+        <!-- Movie name -->
+        <div class="field">
+          <label for="movieInput">Movie title</label>
+          <input type="text" id="movieInput" placeholder="e.g. Inception, The Dark Knight…" />
+        </div>
+
+        <!-- Single review -->
+        <div class="field">
+          <label for="reviewInput">Your review</label>
+          <div class="review-row">
+            <textarea id="reviewInput" rows="2" placeholder="Write your review here…"></textarea>
+            <button class="btn-icon" id="addReviewBtn" title="Add another review">+</button>
+          </div>
+        </div>
+
+        <!-- Extra reviews container -->
+        <div class="field full" id="extraReviewsWrap" style="display:none;">
+          <label>Additional reviews</label>
+          <div class="extra-reviews" id="extraReviewsList"></div>
+        </div>
+
+        <!-- Analyze button -->
+        <button class="btn-analyze" id="analyzeBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          Analyze Sentiment
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════  ERROR  ═══════════════════ -->
+    <div class="error-banner" id="errorBanner"></div>
+
+    <!-- ═══════════════════  SPINNER  ═══════════════════ -->
+    <div class="spinner-wrap" id="spinner">
+      <div class="spinner"></div>
+      <p class="spinner-label">Analyzing sentiment &amp; fetching movie data…</p>
+    </div>
+
+    <!-- ═══════════════════  RESULTS  ═══════════════════ -->
+    <section id="results">
+
+      <!-- Movie card -->
+      <div class="movie-card" id="movieCard">
+        <div class="poster-wrap">
+          <img class="movie-poster" id="moviePoster" src="" alt="poster" />
+        </div>
+        <div class="movie-meta">
+          <div>
+            <div class="movie-title-text" id="movieTitle"></div>
+            <div class="movie-year" id="movieYear"></div>
+          </div>
+          <div class="imdb-badge" id="imdbBadge">★ <span id="imdbRating"></span> IMDb</div>
+          <div class="meta-row" id="genreTags"></div>
+          <div class="meta-line" id="directorLine"></div>
+          <div class="meta-line" id="actorsLine"></div>
+          <div class="meta-line" id="runtimeLine"></div>
+          <p class="movie-plot" id="moviePlot"></p>
+        </div>
+      </div>
+
+      <!-- Sentiment headline -->
+      <div class="sentiment-headline">
+        <div class="sentiment-label-big">
+          <div class="sentiment-dot" id="sentimentDot"></div>
+          <div>
+            <div class="sentiment-text" id="sentimentText"></div>
+            <div class="sentiment-sub" id="sentimentSub"></div>
+          </div>
+        </div>
+        <div class="confidence-wrap">
+          <div class="confidence-label-row">
+            <span>Confidence</span>
+            <strong id="confidenceVal"></strong>
+          </div>
+          <div class="confidence-bar">
+            <div class="confidence-fill" id="confidenceFill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-row" id="chartsRow">
+        <div class="chart-card">
+          <div class="chart-label">Sentiment distribution</div>
+          <div class="chart-wrap">
+            <canvas id="pieChart" role="img"
+              aria-label="Pie chart showing positive vs negative sentiment distribution"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-label">Confidence breakdown</div>
+          <div class="chart-wrap">
+            <canvas id="barChart" role="img" aria-label="Bar chart showing confidence scores per review"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review list -->
+      <div class="reviews-card" id="reviewsCard">
+        <div class="reviews-card-header">
+          <div class="section-title">Review breakdown</div>
+          <div class="section-title" id="reviewCount"></div>
+        </div>
+        <div id="reviewsList"></div>
+      </div>
+
+    </section><!-- /results -->
+
+
+  </div><!-- /wrapper -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════ -->
+  <script>
+    /* ── Config ────────────────────────────────────────────────────────────────── */
+    const API_URL = "http://localhost:5000/analyze";
+
+    /* ── State ─────────────────────────────────────────────────────────────────── */
+    let extraReviews = [];        // array of additional review strings
+    let pieChartInst = null;
+    let barChartInst = null;
+
+    /* ── DOM refs ──────────────────────────────────────────────────────────────── */
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const movieInput = document.getElementById("movieInput");
+    const reviewInput = document.getElementById("reviewInput");
+    const addReviewBtn = document.getElementById("addReviewBtn");
+    const extraReviewsWrap = document.getElementById("extraReviewsWrap");
+    const extraReviewsList = document.getElementById("extraReviewsList");
+    const spinner = document.getElementById("spinner");
+    const errorBanner = document.getElementById("errorBanner");
+    const results = document.getElementById("results");
+
+    /* ── Allow Enter in movie field to submit ──────────────────────────────────── */
+    movieInput.addEventListener("keydown", e => { if (e.key === "Enter") analyze(); });
+
+    /* ── Add extra review button ───────────────────────────────────────────────── */
+    addReviewBtn.addEventListener("click", () => {
+      const text = reviewInput.value.trim();
+      if (!text) { showError("Please write a review before adding another."); return; }
+      extraReviews.push(text);
+      reviewInput.value = "";
+      renderExtraReviews();
+    });
+
+    function renderExtraReviews() {
+      extraReviewsList.innerHTML = "";
+      extraReviews.forEach((r, i) => {
+        const item = document.createElement("div");
+        item.className = "extra-review-item";
+        item.innerHTML = `<span>${escHtml(r)}</span>
+      <button title="Remove" onclick="removeReview(${i})">✕</button>`;
+        extraReviewsList.appendChild(item);
+      });
+      extraReviewsWrap.style.display = extraReviews.length ? "flex" : "none";
+    }
+
+    function removeReview(i) {
+      extraReviews.splice(i, 1);
+      renderExtraReviews();
+    }
+
+    /* ── Main analyze flow ─────────────────────────────────────────────────────── */
+    analyzeBtn.addEventListener("click", analyze);
+
+    async function analyze() {
+      const movie = movieInput.value.trim();
+      const review = reviewInput.value.trim();
+
+      // Validation
+      if (!movie) { showError("Please enter a movie title."); return; }
+      if (!review && extraReviews.length === 0) {
+        showError("Please write at least one review."); return;
+      }
+
+      // Build review list
+      const allReviews = review
+        ? [review, ...extraReviews]
+        : [...extraReviews];
+
+      // UI state
+      hideError();
+      setLoading(true);
+      results.classList.remove("active");
+
+      try {
+        const payload = { movie, review: allReviews[0], reviews: allReviews };
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || "Server error. Please try again.");
+          return;
+        }
+
+        renderResults(data);
+
+      } catch (err) {
+        showError(
+          "Could not reach the backend. Make sure Flask is running on port 5000."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    /* ── Render results ────────────────────────────────────────────────────────── */
+    function renderResults(data) {
+      const { sentiment, confidence, movie, reviews_analyzed,
+        pos_count, neg_count, total_reviews } = data;
+
+      const isPos = sentiment === "Positive";
+      const color = isPos ? "#3ecf8e" : "#f86b6b";
+      const dimColor = isPos ? "#1a7a52" : "#8c2e2e";
+
+      /* ── Movie card ── */
+      const m = movie;
+      document.getElementById("moviePoster").src = m.poster;
+      document.getElementById("moviePoster").alt = m.title + " poster";
+      document.getElementById("movieTitle").textContent = m.title;
+      document.getElementById("movieYear").textContent = m.year !== "N/A" ? m.year : "";
+      document.getElementById("imdbRating").textContent = m.imdb_rating;
+      if (m.imdb_rating === "N/A") document.getElementById("imdbBadge").style.display = "none";
+
+      // Genre tags
+      const genreWrap = document.getElementById("genreTags");
+      genreWrap.innerHTML = "";
+      if (m.genre && m.genre !== "N/A") {
+        m.genre.split(",").forEach(g => {
+          const tag = document.createElement("span");
+          tag.className = "tag";
+          tag.textContent = g.trim();
+          genreWrap.appendChild(tag);
+        });
+      }
+
+      setMetaLine("directorLine", "Director", m.director);
+      setMetaLine("actorsLine", "Cast", m.actors);
+      setMetaLine("runtimeLine", "Runtime", m.runtime);
+      document.getElementById("moviePlot").textContent =
+        m.plot && m.plot !== "N/A" ? m.plot : "";
+
+      /* ── Sentiment headline ── */
+      document.getElementById("sentimentDot").style.background = color;
+      document.getElementById("sentimentText").textContent = sentiment;
+      document.getElementById("sentimentText").style.color = color;
+
+      const sub = total_reviews > 1
+        ? `Based on ${total_reviews} review${total_reviews > 1 ? "s" : ""}  ·  ${pos_count}✓ positive  ${neg_count}✗ negative`
+        : `Confidence: ${confidence}%`;
+      document.getElementById("sentimentSub").textContent = sub;
+
+      document.getElementById("confidenceVal").textContent = confidence + "%";
+      document.getElementById("confidenceFill").style.background = color;
+      setTimeout(() => {
+        document.getElementById("confidenceFill").style.width = confidence + "%";
+      }, 80);
+
+      /* ── Charts ── */
+      renderPieChart(pos_count || 1, neg_count || 0, color, dimColor, isPos);
+      renderBarChart(reviews_analyzed);
+
+      /* ── Review list ── */
+      const list = document.getElementById("reviewsList");
+      list.innerHTML = "";
+      document.getElementById("reviewCount").textContent =
+        total_reviews + (total_reviews === 1 ? " review" : " reviews");
+
+      reviews_analyzed.forEach((r, i) => {
+        const rPos = r.sentiment === "Positive";
+        const rColor = rPos ? "#3ecf8e" : "#f86b6b";
+        const item = document.createElement("div");
+        item.className = "review-item";
+        item.style.animationDelay = (i * 60) + "ms";
+        item.innerHTML = `
+      <div class="review-top">
+        <span class="review-num">Review ${i + 1}</span>
+        <span class="badge badge-${rPos ? "pos" : "neg"}">${r.sentiment}</span>
+      </div>
+      <div class="review-text-display">${escHtml(r.text)}</div>
+      <div class="review-mini-bar">
+        <span style="font-size:.72rem;color:var(--text-dim);min-width:52px;">
+          ${r.confidence}%
+        </span>
+        <div class="mini-bar">
+          <div class="mini-fill" style="width:${r.confidence}%;background:${rColor}"></div>
+        </div>
+        <span class="mini-val">${r.confidence}%</span>
+      </div>`;
+        list.appendChild(item);
+      });
+
+      /* ── Show section ── */
+      results.classList.add("active");
+      results.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* ── Chart helpers ─────────────────────────────────────────────────────────── */
+    function renderPieChart(pos, neg, posColor, negColor, isPos) {
+      if (pieChartInst) pieChartInst.destroy();
+      const ctx = document.getElementById("pieChart").getContext("2d");
+      pieChartInst = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: ["Positive", "Negative"],
+          datasets: [{
+            data: [pos, Math.max(neg, 0)],
+            backgroundColor: [posColor, "#f86b6b"],
+            borderColor: ["#1a7a52", "#8c2e2e"],
+            borderWidth: 1,
+            hoverOffset: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.label}: ${ctx.parsed} review${ctx.parsed !== 1 ? "s" : ""}`
+              }
+            }
+          },
+          cutout: "62%",
+        }
+      });
+    }
+
+    function renderBarChart(reviews) {
+      if (barChartInst) barChartInst.destroy();
+      const labels = reviews.map((_, i) => `R${i + 1}`);
+      const posData = reviews.map(r => r.pos_prob);
+      const negData = reviews.map(r => r.neg_prob);
+
+      const ctx = document.getElementById("barChart").getContext("2d");
+      barChartInst = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Positive %",
+              data: posData,
+              backgroundColor: "rgba(62,207,142,.75)",
+              borderColor: "#3ecf8e",
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+            {
+              label: "Negative %",
+              data: negData,
+              backgroundColor: "rgba(248,107,107,.7)",
+              borderColor: "#f86b6b",
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}%` } }
+          },
+          scales: {
+            x: { ticks: { color: "#8585a8", font: { size: 11 } }, grid: { display: false } },
+            y: {
+              min: 0, max: 100,
+              ticks: { color: "#8585a8", font: { size: 11 }, callback: v => v + "%" },
+              grid: { color: "rgba(255,255,255,.05)" }
+            }
+          }
+        }
+      });
+    }
+
+    /* ── UI helpers ────────────────────────────────────────────────────────────── */
+    function setLoading(on) {
+      spinner.classList.toggle("active", on);
+      analyzeBtn.disabled = on;
+      analyzeBtn.textContent = on ? "Analyzing…" : "Analyze Sentiment";
+    }
+
+    function showError(msg) {
+      errorBanner.textContent = "⚠  " + msg;
+      errorBanner.classList.add("active");
+      errorBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function hideError() { errorBanner.classList.remove("active"); }
+
+    function setMetaLine(id, label, value) {
+      const el = document.getElementById(id);
+      if (value && value !== "N/A") {
+        el.innerHTML = `<strong>${label}:</strong> ${escHtml(value)}`;
+      } else {
+        el.style.display = "none";
+      }
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+
+</html>
